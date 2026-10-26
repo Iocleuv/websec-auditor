@@ -1,35 +1,48 @@
 # WebSec Auditor
 
-An educational, passive HTTPS security configuration auditor for **owned or explicitly authorized** websites.
+A small, educational **passive web security configuration auditor** for sites you own or have explicit authorization to assess. Built with Python and HTTPX.
 
-## Features (v0.1)
-- Checks presence of selected HTTP security headers.
-- Checks cookie attributes without reporting cookie values.
-- Produces JSON findings with severity and remediation guidance.
-- No redirects, crawling or exploit attempts.
+## Features (v0.2 candidate)
 
-## Install
+- Checks missing HTTP security headers and selected values.
+- Checks common cookie security attributes without logging cookie values.
+- Generates structured JSON findings and recommendations.
+- Includes a **fully offline demo mode** and unit tests with HTTPX MockTransport.
+- Does not follow HTTP redirects, crawl sites or send exploit payloads.
+
+## Installation
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -e '.[dev]'
 ```
 
-## Test
+## Offline demo (recommended first run)
+
 ```bash
-pytest -q
+websec-auditor --demo
+websec-auditor --demo --output report.json
 ```
 
-## Run
+The demo uses **synthetic data**, makes no network requests, and is safe to use as a portfolio preview.
+
+## Authorized scan
+
 ```bash
-websec-auditor https://your-owned-domain.example --authorized
+websec-auditor https://your-owned-domain.example --authorized --output report.json
 ```
 
-## Important limitations
-Findings are configuration observations, **not** verified vulnerabilities. Some missing headers are acceptable depending on application context. This CLI MVP is **not safe to expose as a public scanning service** without robust SSRF/DNS rebinding defenses, DNS/IP egress policy, authorization verification and rate limiting. See `docs/architecture.md`.
+A missing header or cookie flag is an observation requiring context, not proof of an exploitable vulnerability. The live scanner makes one HTTPS request and does not follow redirects.
 
-## Roadmap
-- Offline fixtures and richer tests
-- Structured JSON reports and CI quality checks
-- Safe TLS inspection and contextual scoring
-- Explicit asset verification before any hosted deployment
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+## Scope and safety
+
+**Never expose this CLI implementation as a public URL-scanning API.** It does not prevent SSRF, DNS rebinding, internal service access or other untrusted-URL issues. A production hosted service requires verified domain ownership, IP/DNS egress controls and rate limits. The `--authorized` option is a statement by the operator, **not** ownership verification.
+
+See [architecture](docs/architecture.md) for limitations and planned improvements.
