@@ -1,17 +1,28 @@
 # Architecture
 
-- Production-intended CLI path: HTTPS URL (authorized operator) -> HTTPX single request (no redirects) -> headers/cookies checks -> JSON findings.
-- Learning path: loopback HTTP lab server (127.0.0.1:8765, fixed profiles) -> auditor CLI with --lab -> JSON findings.
-- Offline path: --demo -> synthetic response metadata -> checks -> JSON findings.
+WebSec Auditor has three execution paths:
 
-The local lab server is accessible only from the same machine (IPv4 loopback) and uses no real authentication secrets. Plain HTTP is intentionally used only for this introductory lab. HTTPS-specific header and cookie checks are not run against HTTP.
+1. **Offline demo**: synthetic headers/cookies -> checks -> JSON findings.
+2. **Local HTTP lab**: fixed server on 127.0.0.1:8765 -> explicit --lab -> checks -> report.
+3. **Local HTTPS lab**: fixed server on 127.0.0.1:8766, with local CA -> explicit --lab-https + --ca-file -> verified TLS connection -> checks -> report.
 
-## Security limitations
+Authorized external HTTPS hosts can be analyzed with --authorized, only on standard 443. The CLI does not follow redirects. This is not safe as a publicly accessible, untrusted-URL scanner without network egress policy, asset verification and SSRF/DNS rebinding defenses.
 
-- **Do not expose the CLI as a hosted multi-user scanner**: SSRF, DNS rebinding and egress controls are not implemented.
-- Only assess assets you own or have explicit authorization to test.
-- The --authorized flag does not verify ownership.
-- --lab explicitly restricts HTTP to two local paths on 127.0.0.1:8765.
-- Header presence is context-dependent and does not prove exploitability or effectiveness.
-- TLS certificate expiry remains a standalone utility (not integrated).
-- No crawling, port scanning or exploit payloads.
+## TLS learning lab
+
+scripts/create_lab_certs.py requires the openssl executable and generates:
+- Short-lived private CA, for this lab only.
+- Server certificate signed by the local CA, with SAN IP:127.0.0.1.
+- Private keys stored under .lab-certs/ (Git-ignored and user-restricted).
+
+Server TLS minimum: TLS 1.2. Client validation: enabled, with an explicit trust root used **only for lab traffic**. No global CA trust installation and no disabling certificate verification.
+
+The tls.certificate_verified field means the configured TLS validation succeeded for the connection. It is not a complete TLS configuration audit. Neither protocol enumeration nor detailed validity periods are reported yet. HSTS on an IP literal is not browser-enforced; checking its presence here is educational only.
+
+## Known limits
+
+- --authorized is an operator confirmation, **not** proof of domain ownership.
+- Missing headers or cookie flags require contextual interpretation; no vulnerability exploitability is verified.
+- The older certificate-expiry utility is not yet integrated into live response scanning.
+- No crawling, port scanning, brute force, exploits or follow-redirects.
+- **Do not run the lab servers as root or expose them to the network**.
