@@ -46,3 +46,23 @@ python -m pytest -q
 **Never expose this CLI implementation as a public URL-scanning API.** It does not prevent SSRF, DNS rebinding, internal service access or other untrusted-URL issues. A production hosted service requires verified domain ownership, IP/DNS egress controls and rate limits. The `--authorized` option is a statement by the operator, **not** ownership verification.
 
 See [architecture](docs/architecture.md) for limitations and planned improvements.
+
+
+## Real local HTTP lab
+
+First, start a real **loopback-only** web server in terminal A:
+
+~~~bash
+websec-auditor --lab-server
+~~~
+
+Then scan each configuration in terminal B:
+
+~~~bash
+websec-auditor http://127.0.0.1:8765/insecure --lab --output insecure-real.json
+websec-auditor http://127.0.0.1:8765/hardened --lab --output hardened-real.json
+~~~
+
+Expected results: five findings for the insecure HTTP profile; zero for the hardened HTTP profile. Unlike the offline demo, these are real HTTP requests to a local lab server. HTTPS-only checks are intentionally skipped because this lab runs HTTP on loopback.
+
+Read [Laboratorio 02 (español)](docs/learning-02-local-http-lab.md) for instructions, limits and explanations.
