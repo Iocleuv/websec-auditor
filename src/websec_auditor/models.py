@@ -1,3 +1,5 @@
+"""Structured security observations."""
+
 from dataclasses import asdict, dataclass
 
 
@@ -7,6 +9,10 @@ class Finding:
     severity: str
     detail: str
     recommendation: str
+    evidence: dict[str, str | int] | None = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        result = asdict(self)
+        if self.evidence is None:
+            result.pop("evidence")
+        return result

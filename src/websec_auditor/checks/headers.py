@@ -1,7 +1,7 @@
-"""Targeted, conservative HTTP security-header checks.
+"""Conservative HTTP header checks with value-safe structured evidence.
 
-A finding is a configuration observation, NOT a proven exploitable flaw.
-Only a limited subset of header semantics is supported.
+Observations are configuration indicators, not proven exploitable weaknesses.
+This is a deliberately limited subset of HTTP security header semantics.
 """
 
 import re
@@ -9,7 +9,6 @@ import re
 from websec_auditor.models import Finding
 
 
-# Browsers select the last *recognized* policy from comma-separated values.
 KNOWN_REFERRER_POLICIES = frozenset({
     "no-referrer", "no-referrer-when-downgrade", "origin",
     "origin-when-cross-origin", "same-origin", "strict-origin",
@@ -18,19 +17,27 @@ KNOWN_REFERRER_POLICIES = frozenset({
 MAX_AGE = re.compile(r'^max-age\s*=\s*(?:"(\d+)"|(\d+))$', re.IGNORECASE)
 
 
-def _csp_allows_unsafe_eval(value: str) -> bool:
-    """Inspect effective script-src, falling back to default-src.
-
-    This is intentionally *not* a comprehensive CSP validator.
-    """
+def _csp_unsafe_eval_directive(value: str) -> str | None:
+    """Return the effective directive that allows 'unsafe-eval', if any."""
     directives: dict[str, list[str]] = {}
     for raw in value.split(";"):
         tokens = raw.strip().lower().split()
         if tokens:
-            # A duplicate directive does not override the first one.
+            # Browsers ignore a repeated directive after its first occurrence.
             directives.setdefault(tokens[0], tokens[1:])
-    script_sources = directives.get("script-src", directives.get("default-src", []))
-    return "'unsafe-eval'" in script_sources
+
+    directive = (
+        "script-src" if "script-src" in directives else
+        "default-src" if "default-src" in directives else None
+    )
+    if directive is not None and "'unsafe-eval'" in directives[directive]:
+        return directive
+    return None
+
+
+def _csp_allows_unsafe_eval(value: str) -> bool:
+    """Compatibility helper for the focused CSP heuristic."""
+    return _csp_unsafe_eval_directive(value) is not None
 
 
 def _hsts_max_age(value: str) -> int | None:
@@ -49,9 +56,14 @@ def _effective_referrer_policy(value: str) -> str | None:
     return supported[-1] if supported else None
 
 
+def _header_evidence(name: str, **facts: str | int) -> dict[str, str | int]:
+    """Only store allowlisted facts, never copy untrusted header contents."""
+    return {"source": "response_header", "name": name, **facts}
+
+
 def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Finding]:
     normalized = {k.lower(): v for k, v in headers.items()}
-    findings = []
+    findings: list[Finding] = []
     checks = {
         "content-security-policy": ("medium", "Consider a restrictive Content-Security-Policy."),
         "x-content-type-options": ("low", "Set X-Content-Type-Options: nosniff."),
@@ -65,23 +77,32 @@ def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Findin
     for name, (severity, recommendation) in checks.items():
         if name not in normalized:
             findings.append(Finding(
-                name, severity, f"Header {name} not present in response.", recommendation
+                name, severity, f"Header {name} not present in response.", recommendation,
+                evidence=_header_evidence(name, observed="absent"),
             ))
 
     if "x-content-type-options" in normalized:
         if normalized["x-content-type-options"].strip().lower() != "nosniff":
             findings.append(Finding(
                 "x-content-type-options-value", "low",
-                "X-Content-Type-Options is not nosniff.", "Set nosniff."
+                "X-Content-Type-Options is not nosniff.", "Set nosniff.",
+                evidence=_header_evidence("x-content-type-options", observed="not_nosniff"),
             ))
 
     csp = normalized.get("content-security-policy")
-    if csp and _csp_allows_unsafe_eval(csp):
-        findings.append(Finding(
-            "content-security-policy-unsafe-eval", "medium",
-            "CSP permits JavaScript string evaluation with 'unsafe-eval'.",
-            "Remove 'unsafe-eval' from effective script sources if the application permits."
-        ))
+    if csp:
+        directive = _csp_unsafe_eval_directive(csp)
+        if directive is not None:
+            findings.append(Finding(
+                "content-security-policy-unsafe-eval", "medium",
+                "CSP permits JavaScript string evaluation with 'unsafe-eval'.",
+                "Remove 'unsafe-eval' from effective script sources if the application permits.",
+                evidence=_header_evidence(
+                    "content-security-policy",
+                    effective_directive=directive,
+                    matched_token="'unsafe-eval'",
+                ),
+            ))
 
     policy = normalized.get("referrer-policy")
     if policy is not None:
@@ -90,13 +111,15 @@ def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Findin
             findings.append(Finding(
                 "referrer-policy-unsafe-url", "low",
                 "Referrer-Policy unsafe-url may disclose URL paths and query strings.",
-                "Prefer strict-origin-when-cross-origin or a more restrictive policy."
+                "Prefer strict-origin-when-cross-origin or a more restrictive policy.",
+                evidence=_header_evidence("referrer-policy", effective_policy="unsafe-url"),
             ))
         elif selected is None:
             findings.append(Finding(
                 "referrer-policy-invalid", "low",
                 "Referrer-Policy has no recognized value.",
-                "Choose a supported Referrer-Policy value."
+                "Choose a supported Referrer-Policy value.",
+                evidence=_header_evidence("referrer-policy", observed="no_recognized_policy"),
             ))
 
     if https and "strict-transport-security" in normalized:
@@ -105,13 +128,17 @@ def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Findin
             findings.append(Finding(
                 "strict-transport-security-invalid", "medium",
                 "HSTS lacks a valid max-age directive.",
-                "Set a valid nonnegative max-age and evaluate rollout compatibility."
+                "Set a valid nonnegative max-age and evaluate rollout compatibility.",
+                evidence=_header_evidence(
+                    "strict-transport-security", observed="invalid_or_missing_max_age"
+                ),
             ))
         elif max_age == 0:
             findings.append(Finding(
                 "strict-transport-security-disabled", "medium",
                 "HSTS max-age=0 disables the policy in browsers that honor it.",
-                "Choose a positive max-age when HSTS is appropriate."
+                "Choose a positive max-age when HSTS is appropriate.",
+                evidence=_header_evidence("strict-transport-security", max_age_seconds=0),
             ))
 
     return findings

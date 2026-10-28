@@ -121,3 +121,13 @@ score or proof that the application is safe.
 The reporting helper does not include raw cookie values or HTTP headers in
 its output. For further details see
 [Laboratorio 05 (español)](docs/learning-05-reports.md).
+
+## Sanitized evidence per finding
+
+Findings now include optional structured `evidence` explaining **what**
+the rule observed without exporting raw cookie values or full response
+headers. This allows report consumers to distinguish an absent header
+from an explicitly weak directive. Finding counts and severities are
+unchanged, and existing JSON fields remain compatible.
+
+See [Laboratorio 06: evidencias (español)](docs/learning-06-finding-evidence.md).

@@ -132,3 +132,13 @@ def test_real_local_https_report_summarizes_severity_and_scope(tls_lab):
     assert result["methodology"]["mode"] == "local_https_lab"
     assert result["methodology"]["requests_sent"] == 1
     assert result["tls"]["certificate_verified"] is True
+
+def test_local_https_misconfigured_evidence_matches_observations(tls_lab):
+    base, ca = tls_lab
+    result = scan(base + "/misconfigured", allow_local_https=True, ca_file=ca)
+    by_check = {item["check"]: item for item in result["findings"]}
+    assert result["summary"]["total_findings"] == 3
+    assert by_check["content-security-policy-unsafe-eval"]["evidence"]["effective_directive"] == "script-src"
+    assert by_check["referrer-policy-unsafe-url"]["evidence"]["effective_policy"] == "unsafe-url"
+    assert by_check["strict-transport-security-disabled"]["evidence"]["max_age_seconds"] == 0
+    assert "lab-only" not in str(result)
