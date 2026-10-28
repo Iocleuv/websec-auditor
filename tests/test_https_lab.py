@@ -121,3 +121,14 @@ def test_https_misconfigured_profile_detects_bad_values(tls_lab):
         "referrer-policy-unsafe-url",
         "strict-transport-security-disabled",
     }
+
+def test_real_local_https_report_summarizes_severity_and_scope(tls_lab):
+    base, ca = tls_lab
+    result = scan(base + "/misconfigured", allow_local_https=True, ca_file=ca)
+    assert result["summary"] == {
+        "total_findings": 3,
+        "by_severity": {"critical": 0, "high": 0, "medium": 2, "low": 1, "info": 0},
+    }
+    assert result["methodology"]["mode"] == "local_https_lab"
+    assert result["methodology"]["requests_sent"] == 1
+    assert result["tls"]["certificate_verified"] is True

@@ -107,3 +107,17 @@ HSTS max-age=0. This is an intentionally narrow set of heuristic
 observations, not a comprehensive CSP/HSTS validator.
 
 See [Laboratorio 04 (español)](docs/learning-04-header-values.md).
+
+## Report quality
+
+All JSON reports now include a simple, deterministic `summary` with a finding
+count and severity totals, plus a `methodology` object describing what was
+actually tested and what the results **do not** prove.
+
+For example, the HTTPS `/misconfigured` lab returns three observations (two
+medium, one low), while `/hardened` returns zero. This is **not** a security
+score or proof that the application is safe.
+
+The reporting helper does not include raw cookie values or HTTP headers in
+its output. For further details see
+[Laboratorio 05 (español)](docs/learning-05-reports.md).

@@ -2,6 +2,7 @@
 
 from websec_auditor.checks.cookies import check_cookies
 from websec_auditor.checks.headers import check_headers
+from websec_auditor.reporting import enrich_report
 
 
 def demo_report(profile: str = "insecure") -> dict:
@@ -24,11 +25,11 @@ def demo_report(profile: str = "insecure") -> dict:
 
     findings = check_headers(headers)
     findings.extend(check_cookies(cookies))
-    return {
+    return enrich_report({
         "url": "https://demo.example.invalid/",
         "status_code": 200,
         "demo": True,
         "profile": profile,
         "note": "Synthetic sample. No remote site was scanned. No findings does not mean secure.",
         "findings": [finding.to_dict() for finding in findings],
-    }
+    }, mode="offline_demo")

@@ -9,6 +9,7 @@ import httpx
 from websec_auditor.checks.cookies import check_cookies
 from websec_auditor.checks.headers import check_headers
 from websec_auditor.lab import LAB_HOST, LAB_PATHS, LAB_PORT, LAB_TLS_PORT
+from websec_auditor.reporting import enrich_report
 
 
 def scan(
@@ -83,4 +84,8 @@ def scan(
             "certificate_verified": True,
             "trust_source": "local_lab_ca" if allow_local_https else "system",
         }
-    return result
+    mode = (
+        "local_http_lab" if allow_local_http else
+        "local_https_lab" if allow_local_https else "authorized_https"
+    )
+    return enrich_report(result, mode=mode)
