@@ -109,3 +109,15 @@ def test_http_and_https_lab_modes_are_mutually_exclusive():
             "http://127.0.0.1:8765/insecure",
             allow_local_http=True, allow_local_https=True,
         )
+
+
+def test_https_misconfigured_profile_detects_bad_values(tls_lab):
+    base, ca = tls_lab
+    result = scan(base + "/misconfigured", allow_local_https=True, ca_file=ca)
+    assert result["status_code"] == 200
+    assert result["tls"]["certificate_verified"] is True
+    assert {item["check"] for item in result["findings"]} == {
+        "content-security-policy-unsafe-eval",
+        "referrer-policy-unsafe-url",
+        "strict-transport-security-disabled",
+    }

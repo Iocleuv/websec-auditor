@@ -10,11 +10,11 @@ from pathlib import Path
 LAB_HOST = "127.0.0.1"
 LAB_PORT = 8765  # Existing HTTP lab
 LAB_TLS_PORT = 8766  # HTTPS lab
-LAB_PATHS = frozenset({"/insecure", "/hardened"})
+LAB_PATHS = frozenset({"/insecure", "/hardened", "/misconfigured"})
 
 
 class LabHandler(BaseHTTPRequestHandler):
-    """Respond with either deliberately weak or hardened HTTP metadata."""
+    """Respond with absent, safe or intentionally weak header values."""
 
     def do_GET(self) -> None:
         if self.path not in LAB_PATHS and self.path != "/":
@@ -24,7 +24,8 @@ class LabHandler(BaseHTTPRequestHandler):
         body = (
             b"<html><body><h1>WebSec Auditor local lab</h1>"
             b"<p><a href='/insecure'>Insecure profile</a> | "
-            b"<a href='/hardened'>Hardened profile</a></p></body></html>"
+            b"<a href='/hardened'>Hardened profile</a> | "
+            b"<a href='/misconfigured'>Misconfigured profile</a></p></body></html>"
         )
         using_tls = isinstance(self.connection, ssl.SSLSocket)
         self.send_response(200)
@@ -40,6 +41,15 @@ class LabHandler(BaseHTTPRequestHandler):
             self.send_header("Referrer-Policy", "no-referrer")
             if using_tls:
                 self.send_header("Strict-Transport-Security", "max-age=31536000")
+            attributes = "; Secure; HttpOnly; SameSite=Strict" if using_tls else "; HttpOnly; SameSite=Strict"
+            self.send_header("Set-Cookie", "session=lab-only; Path=/" + attributes)
+        elif self.path == "/misconfigured":
+            # Headers are present, but their *values* weaken their protections.
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "unsafe-url")
+            if using_tls:
+                self.send_header("Strict-Transport-Security", "max-age=0")
             attributes = "; Secure; HttpOnly; SameSite=Strict" if using_tls else "; HttpOnly; SameSite=Strict"
             self.send_header("Set-Cookie", "session=lab-only; Path=/" + attributes)
 
@@ -65,7 +75,7 @@ def serve_lab(
             server.socket = context.wrap_socket(server.socket, server_side=True)
         scheme = "https" if https else "http"
         print(f"Local {scheme.upper()} lab: {scheme}://{LAB_HOST}:{port}/", flush=True)
-        print("Use another terminal to scan /insecure and /hardened. Ctrl+C to stop.", flush=True)
+        print("Use another terminal to scan /insecure, /hardened and /misconfigured. Ctrl+C to stop.", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

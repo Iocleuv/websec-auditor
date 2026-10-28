@@ -90,3 +90,20 @@ websec-auditor https://127.0.0.1:8766/hardened --lab-https --ca-file .lab-certs/
 ~~~
 
 Expected: 7 findings vs 0 for the current checks. The CA is trusted only by this command, never globally. See [Laboratorio 03: HTTPS (español)](docs/learning-03-local-https-lab.md). Do not deploy this training code as a public service.
+
+
+## Security header value validation
+
+A third local profile contains security headers that are *present* but weakly
+configured. Once you update the app, restart the HTTPS lab server and run:
+
+~~~bash
+websec-auditor https://127.0.0.1:8766/misconfigured --lab-https \
+  --ca-file .lab-certs/ca.crt --output misconfigured-https.json
+~~~
+
+Current expected findings (3): CSP 'unsafe-eval', Referrer-Policy unsafe-url,
+HSTS max-age=0. This is an intentionally narrow set of heuristic
+observations, not a comprehensive CSP/HSTS validator.
+
+See [Laboratorio 04 (español)](docs/learning-04-header-values.md).

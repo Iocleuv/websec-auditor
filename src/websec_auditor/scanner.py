@@ -49,7 +49,7 @@ def scan(
 
     if allow_local_http:
         if not is_lab_http or ca_file is not None:
-            raise ValueError("--lab permits only http://127.0.0.1:8765/{insecure,hardened}.")
+            raise ValueError("--lab permits only http://127.0.0.1:8765/{insecure,hardened,misconfigured}.")
     elif allow_local_https:
         if not is_lab_https or ca_file is None:
             raise ValueError("--lab-https needs a fixed https://127.0.0.1:8766/ lab URL and --ca-file.")

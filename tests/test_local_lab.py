@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from websec_auditor.lab import LAB_HOST, LabHandler
+from websec_auditor.checks.headers import check_headers
 from websec_auditor.scanner import scan
 
 
@@ -69,3 +70,11 @@ def test_local_http_profile_suppresses_https_only_checks():
         "cookie-httponly", "cookie-samesite"
     }
     assert "lab-only" not in str(findings)
+
+
+def test_local_http_misconfigured_profile_suppresses_hsts_values(running_lab):
+    with httpx.Client(trust_env=False, timeout=3) as client:
+        result = client.get(running_lab + "/misconfigured")
+    assert result.status_code == 200
+    names = {item.check for item in check_headers(dict(result.headers), https=False)}
+    assert names == {"content-security-policy-unsafe-eval", "referrer-policy-unsafe-url"}
