@@ -26,3 +26,17 @@ The tls.certificate_verified field means the configured TLS validation succeeded
 - The older certificate-expiry utility is not yet integrated into live response scanning.
 - No crawling, port scanning, brute force, exploits or follow-redirects.
 - **Do not run the lab servers as root or expose them to the network**.
+
+
+## Header value checks (training subset)
+
+In addition to missing header checks, the auditor now flags:
+- CSP effective script-src with 'unsafe-eval' (script-src overrides default-src)
+- Referrer-Policy whose last recognized value is unsafe-url
+- HSTS max-age=0, missing/invalid or duplicated max-age (HTTPS only)
+- X-Content-Type-Options other than nosniff
+
+The local /misconfigured profile contains all three first examples on HTTPS.
+HSTS is never interpreted from HTTP responses and is not browser-enforced for
+IP literals such as 127.0.0.1. Treat all observations as context-dependent;
+real application security requires further testing.
