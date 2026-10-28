@@ -66,3 +66,27 @@ websec-auditor http://127.0.0.1:8765/hardened --lab --output hardened-real.json
 Expected results: five findings for the insecure HTTP profile; zero for the hardened HTTP profile. Unlike the offline demo, these are real HTTP requests to a local lab server. HTTPS-only checks are intentionally skipped because this lab runs HTTP on loopback.
 
 Read [Laboratorio 02 (español)](docs/learning-02-local-http-lab.md) for instructions, limits and explanations.
+
+
+## Local HTTPS lab (real TLS)
+
+Generate a **local-only** CA and server certificate using OpenSSL:
+
+~~~bash
+python scripts/create_lab_certs.py
+~~~
+
+Start the HTTPS server in terminal A:
+
+~~~bash
+websec-auditor --lab-https-server --cert-file .lab-certs/server.crt --key-file .lab-certs/server.key
+~~~
+
+Run two HTTPS scans in terminal B (certificate verification remains enabled):
+
+~~~bash
+websec-auditor https://127.0.0.1:8766/insecure --lab-https --ca-file .lab-certs/ca.crt --output insecure-https.json
+websec-auditor https://127.0.0.1:8766/hardened --lab-https --ca-file .lab-certs/ca.crt --output hardened-https.json
+~~~
+
+Expected: 7 findings vs 0 for the current checks. The CA is trusted only by this command, never globally. See [Laboratorio 03: HTTPS (español)](docs/learning-03-local-https-lab.md). Do not deploy this training code as a public service.

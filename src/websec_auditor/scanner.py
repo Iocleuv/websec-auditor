@@ -1,12 +1,14 @@
-"""Single-request passive web security checks."""
+"""Passive single-response checks with restricted local learning modes."""
 
+import ssl
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
 
 from websec_auditor.checks.cookies import check_cookies
 from websec_auditor.checks.headers import check_headers
-from websec_auditor.lab import LAB_HOST, LAB_PATHS, LAB_PORT
+from websec_auditor.lab import LAB_HOST, LAB_PATHS, LAB_PORT, LAB_TLS_PORT
 
 
 def scan(
@@ -14,40 +16,71 @@ def scan(
     *,
     transport: httpx.BaseTransport | None = None,
     allow_local_http: bool = False,
+    allow_local_https: bool = False,
+    ca_file: str | Path | None = None,
 ) -> dict:
-    """Inspect one HTTP response from an authorized target.
+    """Perform a single request to an authorized HTTPS site or fixed local lab.
 
-    Internet targets must use HTTPS on 443. Unencrypted HTTP is permitted only
-    in explicitly enabled lab mode, on a fixed loopback host, port and path.
-
-    This is a local CLI MVP; not hardened for untrusted URLs, SSRF or DNS
-    rebinding. Do not expose it as a hosted web service.
+    IMPORTANT: not a hosted URL scanning service. No SSRF/DNS rebinding defense
+    for arbitrary user-supplied URLs. Do not expose this function as an API.
     """
+    if allow_local_http and allow_local_https:
+        raise ValueError("Choose either --lab or --lab-https, not both.")
+
     parsed = urlsplit(url)
     if not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
         raise ValueError("URL must have a host and must not contain credentials or a fragment.")
 
-    is_https = parsed.scheme == "https" and parsed.port in (None, 443)
+    is_regular_https = parsed.scheme == "https" and parsed.port in (None, 443)
     is_lab_http = (
-        allow_local_http
-        and parsed.scheme == "http"
+        parsed.scheme == "http"
         and parsed.hostname == LAB_HOST
         and parsed.port == LAB_PORT
         and parsed.path in LAB_PATHS
         and not parsed.query
     )
-    if not (is_https or is_lab_http):
-        raise ValueError("Use standard HTTPS, or --lab with http://127.0.0.1:8765/{insecure,hardened}.")
-    if allow_local_http and not is_lab_http:
-        raise ValueError("--lab only allows the fixed 127.0.0.1 HTTP lab endpoint.")
+    is_lab_https = (
+        parsed.scheme == "https"
+        and parsed.hostname == LAB_HOST
+        and parsed.port == LAB_TLS_PORT
+        and parsed.path in LAB_PATHS
+        and not parsed.query
+    )
 
-    with httpx.Client(timeout=8.0, follow_redirects=False, trust_env=False, transport=transport) as client:
-        response = client.get(url, headers={"User-Agent": "WebSecAuditor/0.1"})
+    if allow_local_http:
+        if not is_lab_http or ca_file is not None:
+            raise ValueError("--lab permits only http://127.0.0.1:8765/{insecure,hardened}.")
+    elif allow_local_https:
+        if not is_lab_https or ca_file is None:
+            raise ValueError("--lab-https needs a fixed https://127.0.0.1:8766/ lab URL and --ca-file.")
+    elif not is_regular_https or ca_file is not None:
+        raise ValueError("Use standard HTTPS for authorized targets; local modes require explicit flags.")
+
+    is_https = is_regular_https or allow_local_https
+    # Verification is NEVER disabled. Custom trust is limited to the fixed lab.
+    verification: bool | ssl.SSLContext = True
+    if allow_local_https:
+        verification = ssl.create_default_context(cafile=str(ca_file))
+
+    with httpx.Client(
+        timeout=8.0, follow_redirects=False, trust_env=False,
+        transport=transport, verify=verification,
+    ) as client:
+        response = client.get(url, headers={"User-Agent": "WebSecAuditor/0.2"})
 
     findings = check_headers(dict(response.headers), https=is_https)
     findings.extend(check_cookies(response.headers.get_list("set-cookie"), https=is_https))
-    return {
+
+    result = {
         "url": url,
         "status_code": response.status_code,
         "findings": [finding.to_dict() for finding in findings],
     }
+    if is_https:
+        # A successful HTTPS request implies the configured TLS verifier
+        # accepted the certificate; this is not a full TLS configuration audit.
+        result["tls"] = {
+            "certificate_verified": True,
+            "trust_source": "local_lab_ca" if allow_local_https else "system",
+        }
+    return result

@@ -1,22 +1,23 @@
-"""Intentionally misconfigured loopback-only HTTP lab for security education.
+"""HTTP and HTTPS loopback labs for educational security checks.
 
-Do not deploy this server to a public interface. It is intentionally HTTP
-(without TLS), so HTTPS-only checks cannot be exercised in this first lab.
+Only bind to 127.0.0.1. Do not expose deliberately weak profiles publicly.
 """
 
+import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 LAB_HOST = "127.0.0.1"
-LAB_PORT = 8765
+LAB_PORT = 8765  # Existing HTTP lab
+LAB_TLS_PORT = 8766  # HTTPS lab
 LAB_PATHS = frozenset({"/insecure", "/hardened"})
 
 
 class LabHandler(BaseHTTPRequestHandler):
-    """Serve fixed, synthetic pages with different HTTP security settings."""
+    """Respond with either deliberately weak or hardened HTTP metadata."""
 
     def do_GET(self) -> None:
-        path = self.path
-        if path not in LAB_PATHS and path != "/":
+        if self.path not in LAB_PATHS and self.path != "/":
             self.send_error(404, "Unknown lab path")
             return
 
@@ -25,27 +26,46 @@ class LabHandler(BaseHTTPRequestHandler):
             b"<p><a href='/insecure'>Insecure profile</a> | "
             b"<a href='/hardened'>Hardened profile</a></p></body></html>"
         )
+        using_tls = isinstance(self.connection, ssl.SSLSocket)
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        if path == "/insecure":
-            # Synthetic placeholder, not an actual user session.
+
+        if self.path == "/insecure":
             self.send_header("Set-Cookie", "session=lab-only; Path=/")
-        elif path == "/hardened":
+        elif self.path == "/hardened":
             self.send_header("Content-Security-Policy", "default-src 'self'; object-src 'none'")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Set-Cookie", "session=lab-only; Path=/; HttpOnly; SameSite=Strict")
+            if using_tls:
+                self.send_header("Strict-Transport-Security", "max-age=31536000")
+            attributes = "; Secure; HttpOnly; SameSite=Strict" if using_tls else "; HttpOnly; SameSite=Strict"
+            self.send_header("Set-Cookie", "session=lab-only; Path=/" + attributes)
+
         self.end_headers()
         self.wfile.write(body)
 
 
-def serve_lab() -> None:
-    """Run until Ctrl+C. Binding is fixed to 127.0.0.1, never 0.0.0.0."""
-    with ThreadingHTTPServer((LAB_HOST, LAB_PORT), LabHandler) as server:
-        print(f"Local HTTP lab: http://{LAB_HOST}:{LAB_PORT}/", flush=True)
-        print("Use a second terminal to scan /insecure and /hardened. Ctrl+C to stop.", flush=True)
+def serve_lab(
+    *,
+    https: bool = False,
+    cert_file: str | Path | None = None,
+    key_file: str | Path | None = None,
+) -> None:
+    """Serve fixed local routes until Ctrl+C; only the TLS mode loads keys."""
+    port = LAB_TLS_PORT if https else LAB_PORT
+    with ThreadingHTTPServer((LAB_HOST, port), LabHandler) as server:
+        if https:
+            if cert_file is None or key_file is None:
+                raise ValueError("The HTTPS lab needs a certificate and private key.")
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            context.load_cert_chain(certfile=str(cert_file), keyfile=str(key_file))
+            server.socket = context.wrap_socket(server.socket, server_side=True)
+        scheme = "https" if https else "http"
+        print(f"Local {scheme.upper()} lab: {scheme}://{LAB_HOST}:{port}/", flush=True)
+        print("Use another terminal to scan /insecure and /hardened. Ctrl+C to stop.", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
