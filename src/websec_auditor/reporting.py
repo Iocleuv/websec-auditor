@@ -40,15 +40,23 @@ def enrich_report(report: dict, *, mode: ReportMode) -> dict:
     if mode == "local_https_lab":
         limitations.append(LOOPBACK_HSTS_LIMITATION)
 
+    methodology = {
+        "mode": mode,
+        "requests_sent": 0 if mode == "offline_demo" else 1,
+        "limitations": limitations,
+    }
+    context = report.get("response_context")
+    if context is not None and not context["document_checks_applied"]:
+        methodology["skipped_checks"] = [
+            "content-security-policy",
+            "referrer-policy",
+        ]
+
     return {
         **report,
         "summary": {
             "total_findings": len(findings),
             "by_severity": by_severity,
         },
-        "methodology": {
-            "mode": mode,
-            "requests_sent": 0 if mode == "offline_demo" else 1,
-            "limitations": limitations,
-        },
+        "methodology": methodology,
     }

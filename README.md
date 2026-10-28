@@ -131,3 +131,18 @@ from an explicitly weak directive. Finding counts and severities are
 unchanged, and existing JSON fields remain compatible.
 
 See [Laboratorio 06: evidencias (español)](docs/learning-06-finding-evidence.md).
+
+## Response-aware checks (reducing false positives)
+
+The scanner now distinguishes successful HTML documents from JSON, redirects,
+empty responses, unknown types and error responses. The missing/invalid CSP and
+Referrer-Policy document checks run only for successful HTML documents.
+HSTS (on HTTPS), X-Content-Type-Options and cookie checks remain applicable
+to non-HTML responses.
+
+The JSON report includes `response_context.kind` and lists omitted checks
+under `methodology.skipped_checks` to make the result auditable.
+A skipped check means **not evaluated**, not safe or compliant.
+
+Try the loopback HTTPS routes `/json` and `/redirect` after restarting the
+lab. See [Laboratorio 07 (español)](docs/learning-07-response-context.md).

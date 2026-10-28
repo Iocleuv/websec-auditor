@@ -142,3 +142,37 @@ def test_local_https_misconfigured_evidence_matches_observations(tls_lab):
     assert by_check["referrer-policy-unsafe-url"]["evidence"]["effective_policy"] == "unsafe-url"
     assert by_check["strict-transport-security-disabled"]["evidence"]["max_age_seconds"] == 0
     assert "lab-only" not in str(result)
+
+
+def test_real_https_json_avoids_document_header_false_positives(tls_lab):
+    base, ca = tls_lab
+    result = scan(base + "/json", allow_local_https=True, ca_file=ca)
+    assert result["status_code"] == 200
+    assert result["response_context"] == {
+        "kind": "non_html", "document_checks_applied": False,
+    }
+    assert result["findings"] == []
+    assert result["summary"]["total_findings"] == 0
+    assert result["methodology"]["skipped_checks"] == [
+        "content-security-policy", "referrer-policy",
+    ]
+    assert result["tls"]["certificate_verified"] is True
+
+
+def test_real_https_redirect_is_not_followed_and_skips_document_checks(tls_lab):
+    base, ca = tls_lab
+    result = scan(base + "/redirect", allow_local_https=True, ca_file=ca)
+    assert result["status_code"] == 302
+    assert result["response_context"]["kind"] == "redirect"
+    assert result["findings"] == []
+    assert result["methodology"]["requests_sent"] == 1
+
+
+def test_real_https_html_still_detects_misconfigurations(tls_lab):
+    base, ca = tls_lab
+    result = scan(base + "/misconfigured", allow_local_https=True, ca_file=ca)
+    assert result["response_context"] == {
+        "kind": "html_document", "document_checks_applied": True,
+    }
+    assert "skipped_checks" not in result["methodology"]
+    assert result["summary"]["total_findings"] == 3

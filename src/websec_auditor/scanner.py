@@ -10,6 +10,7 @@ from websec_auditor.checks.cookies import check_cookies
 from websec_auditor.checks.headers import check_headers
 from websec_auditor.lab import LAB_HOST, LAB_PATHS, LAB_PORT, LAB_TLS_PORT
 from websec_auditor.reporting import enrich_report
+from websec_auditor.response_context import classify_response
 
 
 def scan(
@@ -69,12 +70,24 @@ def scan(
     ) as client:
         response = client.get(url, headers={"User-Agent": "WebSecAuditor/0.2"})
 
-    findings = check_headers(dict(response.headers), https=is_https)
+    response_kind = classify_response(
+        response.status_code, response.headers.get("content-type")
+    )
+    document_checks = response_kind == "html_document"
+    findings = check_headers(
+        dict(response.headers),
+        https=is_https,
+        document_checks=document_checks,
+    )
     findings.extend(check_cookies(response.headers.get_list("set-cookie"), https=is_https))
 
     result = {
         "url": url,
         "status_code": response.status_code,
+        "response_context": {
+            "kind": response_kind,
+            "document_checks_applied": document_checks,
+        },
         "findings": [finding.to_dict() for finding in findings],
     }
     if is_https:
