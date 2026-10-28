@@ -61,7 +61,14 @@ def _header_evidence(name: str, **facts: str | int) -> dict[str, str | int]:
     return {"source": "response_header", "name": name, **facts}
 
 
-def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Finding]:
+def check_headers(
+    headers: dict[str, str],
+    *,
+    https: bool = True,
+    document_checks: bool = True,
+) -> list[Finding]:
+    """Inspect response headers; document-specific checks need HTML context."""
+
     normalized = {k.lower(): v for k, v in headers.items()}
     findings: list[Finding] = []
     checks = {
@@ -69,6 +76,9 @@ def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Findin
         "x-content-type-options": ("low", "Set X-Content-Type-Options: nosniff."),
         "referrer-policy": ("low", "Configure a suitable Referrer-Policy."),
     }
+    if not document_checks:
+        checks.pop("content-security-policy")
+        checks.pop("referrer-policy")
     if https:
         checks["strict-transport-security"] = (
             "medium", "Consider HSTS after checking subdomain compatibility."
@@ -90,7 +100,7 @@ def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Findin
             ))
 
     csp = normalized.get("content-security-policy")
-    if csp:
+    if csp and document_checks:
         directive = _csp_unsafe_eval_directive(csp)
         if directive is not None:
             findings.append(Finding(
@@ -105,7 +115,7 @@ def check_headers(headers: dict[str, str], *, https: bool = True) -> list[Findin
             ))
 
     policy = normalized.get("referrer-policy")
-    if policy is not None:
+    if policy is not None and document_checks:
         selected = _effective_referrer_policy(policy)
         if selected == "unsafe-url":
             findings.append(Finding(

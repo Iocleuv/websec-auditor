@@ -62,7 +62,7 @@ def test_local_lab_not_allowed_without_explicit_opt_in():
 
 def test_local_http_profile_suppresses_https_only_checks():
     def response(request):
-        return httpx.Response(200, headers={"Set-Cookie": "session=lab-only; Path=/"})
+        return httpx.Response(200, headers={"Content-Type": "text/html", "Set-Cookie": "session=lab-only; Path=/"})
     findings = scan("http://127.0.0.1:8765/insecure", allow_local_http=True, transport=httpx.MockTransport(response))["findings"]
     names = {finding["check"] for finding in findings}
     assert names == {
@@ -78,3 +78,13 @@ def test_local_http_misconfigured_profile_suppresses_hsts_values(running_lab):
     assert result.status_code == 200
     names = {item.check for item in check_headers(dict(result.headers), https=False)}
     assert names == {"content-security-policy-unsafe-eval", "referrer-policy-unsafe-url"}
+
+
+def test_json_and_redirect_are_real_loopback_responses(running_lab):
+    with httpx.Client(trust_env=False, timeout=3, follow_redirects=False) as client:
+        json_response = client.get(running_lab + "/json")
+        redirect = client.get(running_lab + "/redirect")
+    assert json_response.status_code == 200
+    assert json_response.headers["content-type"].startswith("application/json")
+    assert redirect.status_code == 302
+    assert redirect.headers["location"] == "/hardened"

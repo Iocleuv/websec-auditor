@@ -10,7 +10,7 @@ from pathlib import Path
 LAB_HOST = "127.0.0.1"
 LAB_PORT = 8765  # Existing HTTP lab
 LAB_TLS_PORT = 8766  # HTTPS lab
-LAB_PATHS = frozenset({"/insecure", "/hardened", "/misconfigured"})
+LAB_PATHS = frozenset({"/insecure", "/hardened", "/misconfigured", "/json", "/redirect"})
 
 
 class LabHandler(BaseHTTPRequestHandler):
@@ -21,13 +21,32 @@ class LabHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Unknown lab path")
             return
 
+        using_tls = isinstance(self.connection, ssl.SSLSocket)
+        if self.path in ("/json", "/redirect"):
+            # These deliberately non-document responses exercise false-positive
+            # prevention. HSTS and nosniff remain meaningful here.
+            is_redirect = self.path == "/redirect"
+            body = b"" if is_redirect else b'{"ok":true,"source":"local-lab"}'
+            self.send_response(302 if is_redirect else 200)
+            if is_redirect:
+                self.send_header("Location", "/hardened")
+            else:
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            if using_tls:
+                self.send_header("Strict-Transport-Security", "max-age=31536000")
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+            return
+
         body = (
             b"<html><body><h1>WebSec Auditor local lab</h1>"
             b"<p><a href='/insecure'>Insecure profile</a> | "
             b"<a href='/hardened'>Hardened profile</a> | "
             b"<a href='/misconfigured'>Misconfigured profile</a></p></body></html>"
         )
-        using_tls = isinstance(self.connection, ssl.SSLSocket)
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -75,7 +94,7 @@ def serve_lab(
             server.socket = context.wrap_socket(server.socket, server_side=True)
         scheme = "https" if https else "http"
         print(f"Local {scheme.upper()} lab: {scheme}://{LAB_HOST}:{port}/", flush=True)
-        print("Use another terminal to scan /insecure, /hardened and /misconfigured. Ctrl+C to stop.", flush=True)
+        print("Routes: /insecure, /hardened, /misconfigured, /json, /redirect. Ctrl+C to stop.", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
